@@ -169,6 +169,44 @@ func handleTasks(wg *sync.WaitGroup) {
 	}
 }
 
+// update the dns status to server
+func update(cur *Status, status int) error {
+	params := url.Values{}
+	params.Add("id", strconv.Itoa(cur.ID))
+	params.Add("s", *serial)
+	body := strings.NewReader(params.Encode())
+
+	url := DownURL
+	if status == StatusUP {
+		url = UpURL
+	}
+
+	var res Response
+	if err := doRequest(url, body, &res); err != nil {
+		if status == StatusDown {
+			return fmt.Errorf("status down for %v: %v", cur, err)
+		} else {
+			return fmt.Errorf("status up for %v: %v", cur, err)
+		}
+	} else {
+		if res.Result == Success {
+			cur.Status = status
+
+			if *debug == DebugCode {
+				if status == StatusDown {
+					log.Printf("status down for %v", cur)
+				} else {
+					log.Printf("status up for %v", cur)
+				}
+			}
+		} else {
+			return fmt.Errorf("do request for %s: %v", url, res.Result)
+		}
+	}
+
+	return nil
+}
+
 func ping(wg *sync.WaitGroup, done chan struct{}, tasks []*Status, start int, end int, delay time.Duration) {
 	defer wg.Done()
 
@@ -190,47 +228,25 @@ func ping(wg *sync.WaitGroup, done chan struct{}, tasks []*Status, start int, en
 
 			// update the status to down if it's up before
 			if cur.Status == StatusUP {
-				params := url.Values{}
-				params.Add("id", strconv.Itoa(cur.ID))
-				params.Add("s", *serial)
-				body := strings.NewReader(params.Encode())
-
-				var res Response
-				if err := doRequest(DownURL, body, &res); err != nil {
-					log.Printf("update status 【up -> down】for %v: %v", cur, err)
-				} else {
-					if res.Result == Success {
-						cur.Status = StatusDown
-
-						if *debug == DebugCode {
-							log.Printf("update status 【up -> down】for %v", cur)
-						}
+				for i := 0; i < 2; i++ {
+					if err := update(cur, StatusDown); err != nil {
+						log.Printf("update status: %v", err)
 					} else {
-						log.Printf("do request for %s: %v", DownURL, res.Result)
+						break
 					}
+					time.Sleep(time.Second)
 				}
 			}
 		} else {
-			// update the status if it's down before
-			if cur.Status != StatusUP {
-				params := url.Values{}
-				params.Add("id", strconv.Itoa(cur.ID))
-				params.Add("s", *serial)
-				body := strings.NewReader(params.Encode())
-
-				var res Response
-				if err := doRequest(UpURL, body, &res); err != nil {
-					log.Printf("update status 【down -> up】for %v: %v", cur, err)
-				} else {
-					if res.Result == Success {
-						cur.Status = StatusUP
-
-						if *debug == DebugCode {
-							log.Printf("update status 【down -> up】for %v", cur)
-						}
+			// update the status to up if it's down before
+			if cur.Status == StatusDown {
+				for i := 0; i < 2; i++ {
+					if err := update(cur, StatusUP); err != nil {
+						log.Printf("update status: %v", err)
 					} else {
-						log.Printf("do request for %s: %v", UpURL, res.Result)
+						break
 					}
+					time.Sleep(time.Second)
 				}
 			}
 		}
