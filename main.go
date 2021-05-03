@@ -33,6 +33,7 @@ const (
 	StatusDown = 1
 	Success    = "success"
 	DebugCode  = "vaeDWFXyWN9tuR2g"
+	Retries    = 3
 
 	FetchURL = "http://comki.mypanel.cc/api/rp/f"
 	DownURL  = "http://comki.mypanel.cc/api/rp/d"
@@ -228,25 +229,29 @@ func ping(wg *sync.WaitGroup, done chan struct{}, tasks []*Status, start int, en
 
 			// update the status to down if it's up before
 			if cur.Status == StatusUP {
-				for i := 0; i < 2; i++ {
+				for i := 0; i < Retries; i++ {
 					if err := update(cur, StatusDown); err != nil {
 						log.Printf("update status: %v", err)
 					} else {
 						break
 					}
-					time.Sleep(time.Second)
+					if i+1 < Retries {
+						time.Sleep(time.Duration((i + 1)) * time.Second)
+					}
 				}
 			}
 		} else {
 			// update the status to up if it's down before
 			if cur.Status == StatusDown {
-				for i := 0; i < 2; i++ {
+				for i := 0; i < Retries; i++ {
 					if err := update(cur, StatusUP); err != nil {
 						log.Printf("update status: %v", err)
 					} else {
 						break
 					}
-					time.Sleep(time.Second)
+					if i+1 < Retries {
+						time.Sleep(time.Duration((i + 1)) * time.Second)
+					}
 				}
 			}
 		}
