@@ -50,7 +50,7 @@ func startTimerJob(wg *sync.WaitGroup, done chan struct{}, name string, interval
 
 // check if the address is available
 func checkAddress(address string) error {
-	conn, err := net.DialTimeout("tcp", address, 2*time.Second)
+	conn, err := net.DialTimeout("tcp", address, time.Duration(*timeout)*time.Second)
 	if err != nil {
 		return err
 	}

@@ -21,9 +21,10 @@ import (
 
 var (
 	members  = flag.Int("members", 3, "the members of group for checking concurrently")
-	wait     = flag.Int64("sleep", 1000, "the sleep time for every dns(unit: millisecond)")
-	interval = flag.Int64("interval", 60*30, "the interval time for syncing the dns list(unit: second)")
-	// verify   = flag.Int64("verify", 60*30	, "the interval time for authorizing the dns checker(unit: second)")
+	wait     = flag.Int64("sleep", 1000, "the sleep time for every dns(unit: ms)")
+	interval = flag.Int64("interval", 60*30, "the interval time for syncing the dns list(unit: s)")
+	timeout  = flag.Int64("timeout", 5, "the timeout for dialing the dns port(unit: s)")
+	// verify   = flag.Int64("verify", 60*30	, "the interval time for authorizing the dns checker(unit: s)")
 	serial = flag.String("serial", "", "the serial number for every device")
 	debug  = flag.String("debug", "", "the debug can be enabled with a specific code")
 )
@@ -34,6 +35,7 @@ const (
 	Success    = "success"
 	DebugCode  = "vaeDWFXyWN9tuR2g"
 	Retries    = 3
+	CheckTimes = 2
 
 	FetchURL = "http://comki.mypanel.cc/api/rp/f"
 	DownURL  = "http://comki.mypanel.cc/api/rp/d"
@@ -221,16 +223,26 @@ func ping(wg *sync.WaitGroup, done chan struct{}, tasks []*Status, start int, en
 		}
 
 		cur := tasks[offset]
-		// check if the address is available
-		if err := checkAddress(cur.Address); err != nil {
-			if *debug == DebugCode {
-				log.Printf("check address: %v: %v", cur, err)
-			}
 
-			// update the status to down if it's up before
-			if cur.Status == StatusUP {
+		available := false
+		// check if the address is available twice
+		for i := 0; i < CheckTimes; i++ {
+			if err := checkAddress(cur.Address); err != nil {
+				if *debug == DebugCode {
+					log.Printf("check address: %v: %v", cur, err)
+				}
+				time.Sleep(time.Second)
+			} else {
+				available = true
+				break
+			}
+		}
+
+		if available {
+			// update the status to up if it's down before
+			if cur.Status == StatusDown {
 				for i := 0; i < Retries; i++ {
-					if err := update(cur, StatusDown); err != nil {
+					if err := update(cur, StatusUP); err != nil {
 						log.Printf("update status: %v", err)
 					} else {
 						break
@@ -241,10 +253,10 @@ func ping(wg *sync.WaitGroup, done chan struct{}, tasks []*Status, start int, en
 				}
 			}
 		} else {
-			// update the status to up if it's down before
-			if cur.Status == StatusDown {
+			// update the status to down if it's up before
+			if cur.Status == StatusUP {
 				for i := 0; i < Retries; i++ {
-					if err := update(cur, StatusUP); err != nil {
+					if err := update(cur, StatusDown); err != nil {
 						log.Printf("update status: %v", err)
 					} else {
 						break
